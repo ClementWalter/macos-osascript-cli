@@ -1,6 +1,16 @@
 ---
 name: macos-osascript
-description: "Drive macOS scriptable apps from the terminal via the bundled `bin/osa` command (AppleScript / JavaScript-for-Automation over `osascript`). `osa apps` lists scriptable apps, `osa dict <App>` dumps an app's vocabulary, `osa run '<script>'` / `osa tell <App> '<body>'` execute it. Use whenever the user wants to read or act on a local macOS app — Mail (read mail, save attachments), Calendar (read/create events), Contacts, Notes, Reminders, Messages, Finder, Safari/Chrome/Arc (active tab, URL, run JS in page), Pages/Numbers/Keynote, Preview, Music/Photos, System Events (UI scripting for non-scriptable apps). Read-only by default; destructive ops need --write. macOS only."
+description:
+  "Drive macOS scriptable apps from the terminal via the bundled `bin/osa`
+  command (AppleScript / JavaScript-for-Automation over `osascript`). `osa apps`
+  lists scriptable apps, `osa dict <App>` dumps an app's vocabulary, `osa run
+  '<script>'` / `osa tell <App> '<body>'` execute it. Use whenever the user
+  wants to read or act on a local macOS app — Mail (read mail, save
+  attachments), Calendar (read/create events), Contacts, Notes, Reminders,
+  Messages, Finder, Safari/Chrome/Arc (active tab, URL, run JS in page),
+  Pages/Numbers/Keynote, Preview, Music/Photos, System Events (UI scripting for
+  non-scriptable apps). Read-only by default; destructive ops need --write.
+  macOS only."
 ---
 
 # macOS osascript bridge
@@ -41,10 +51,12 @@ resort, GUI-script them through `System Events`.
 ## Commands
 
 ### `osa apps [--all] [--json]`
+
 List scriptable apps installed on this machine. `--all` also surfaces the
 faceless CoreServices agents (noisy); default keeps the useful set.
 
 ### `osa dict <App> [--raw]`
+
 Print an app's scripting vocabulary — a per-suite list of commands and classes.
 **Read this before scripting an app you don't know**, instead of guessing verbs.
 `--raw` emits the full `.sdef` XML. `<App>` is fuzzy (`chrome`, `mail`).
@@ -55,6 +67,7 @@ bin/osa dict "Google Chrome" --raw | less
 ```
 
 ### `osa run '<script>' [-f FILE] [--js] [--write]`
+
 Run an AppleScript (default) or JavaScript-for-Automation (`--js`). Script comes
 from the argument, `-f FILE`, or stdin.
 
@@ -65,6 +78,7 @@ bin/osa run -f /tmp/script.applescript
 ```
 
 ### `osa tell <App> '<body>' [-f FILE] [--write]`
+
 Convenience: wraps BODY in `tell application "<App>" … end tell`.
 
 ```bash
@@ -85,23 +99,23 @@ before running, per normal agent safety rules.
 Fetch the full vocabulary with `osa dict <App>`. Quick orientation for the apps
 worth reaching for:
 
-| App | What it's good for | Starter |
-| --- | --- | --- |
-| **Mail** | read messages, headers, bodies; **save attachments**; make drafts | `osa tell Mail 'get subject of every message of inbox'` |
-| **Calendar** | list calendars, read/create events | `osa tell Calendar 'get name of every calendar'` |
-| **Reminders** | read/create reminders & lists | `osa tell Reminders 'get name of every list'` |
-| **Notes** | read/create notes & folders | `osa tell Notes 'get name of every folder'` |
-| **Contacts** | look up people, emails, phones | `osa tell Contacts 'get name of every person'` |
-| **Messages** | read chats, send iMessage/SMS *(send = confirm first)* | `osa dict Messages` |
-| **Google Chrome** | active tab URL/title, list tabs, **execute JS in page** | `osa tell "Google Chrome" 'get URL of active tab of front window'` |
-| **Safari** / **Arc** | same as Chrome (active tab, run JS) | `osa tell Safari 'get URL of front document'` |
-| **Finder** | selection, paths, file metadata, windows | `osa tell Finder 'get selection as alias list'` |
-| **Pages / Numbers / Keynote** | read/write documents, sheets, slides | `osa dict Numbers` |
-| **Preview** | open PDFs/images, read open docs | `osa dict Preview` |
-| **Music / Photos / TV** | now-playing, library, albums | `osa tell Music 'get name of current track'` |
-| **System Events** | **GUI-script non-scriptable apps**, processes, UI tree, keystrokes, file ops | `osa tell "System Events" 'get name of every process whose visible is true'` |
-| **iTerm / Terminal** | open sessions, run commands, read output | `osa dict iTerm` |
-| **Image Events** | resize/convert images, read dimensions (faceless) | `osa dict "Image Events"` |
+| App                           | What it's good for                                                           | Starter                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **Mail**                      | read messages, headers, bodies; **save attachments**; make drafts            | `osa tell Mail 'get subject of every message of inbox'`                      |
+| **Calendar**                  | list calendars, read/create events                                           | `osa tell Calendar 'get name of every calendar'`                             |
+| **Reminders**                 | read/create reminders & lists                                                | `osa tell Reminders 'get name of every list'`                                |
+| **Notes**                     | read/create notes & folders                                                  | `osa tell Notes 'get name of every folder'`                                  |
+| **Contacts**                  | look up people, emails, phones                                               | `osa tell Contacts 'get name of every person'`                               |
+| **Messages**                  | read chats, send iMessage/SMS _(send = confirm first)_                       | `osa dict Messages`                                                          |
+| **Google Chrome**             | active tab URL/title, list tabs, **execute JS in page**                      | `osa tell "Google Chrome" 'get URL of active tab of front window'`           |
+| **Safari** / **Arc**          | same as Chrome (active tab, run JS)                                          | `osa tell Safari 'get URL of front document'`                                |
+| **Finder**                    | selection, paths, file metadata, windows                                     | `osa tell Finder 'get selection as alias list'`                              |
+| **Pages / Numbers / Keynote** | read/write documents, sheets, slides                                         | `osa dict Numbers`                                                           |
+| **Preview**                   | open PDFs/images, read open docs                                             | `osa dict Preview`                                                           |
+| **Music / Photos / TV**       | now-playing, library, albums                                                 | `osa tell Music 'get name of current track'`                                 |
+| **System Events**             | **GUI-script non-scriptable apps**, processes, UI tree, keystrokes, file ops | `osa tell "System Events" 'get name of every process whose visible is true'` |
+| **iTerm / Terminal**          | open sessions, run commands, read output                                     | `osa dict iTerm`                                                             |
+| **Image Events**              | resize/convert images, read dimensions (faceless)                            | `osa dict "Image Events"`                                                    |
 
 ## Worked example: read a Mail attachment the Gmail connector can't download
 
@@ -124,6 +138,7 @@ textutil -convert txt /tmp/att.doc -output /tmp/att.txt   # .doc/.docx → text
   apps additionally need Full Disk Access to reach their data. Reading an app's
   objects via Apple Events does **not** require disk access to its container.
 - **JXA vs AppleScript.** `--js` is more convenient for JSON-shaped data;
-  AppleScript reads more naturally for app verbs. Both hit the same Apple Events.
+  AppleScript reads more naturally for app verbs. Both hit the same Apple
+  Events.
 - **Fuzzy app names** work for `dict`/`tell` via Launch Services; quote names
   with spaces (`"Google Chrome"`).
