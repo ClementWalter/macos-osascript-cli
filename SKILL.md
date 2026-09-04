@@ -142,3 +142,144 @@ textutil -convert txt /tmp/att.doc -output /tmp/att.txt   # .doc/.docx → text
   Events.
 - **Fuzzy app names** work for `dict`/`tell` via Launch Services; quote names
   with spaces (`"Google Chrome"`).
+
+### Reminders.app en AppleScript : recettes et pièges
+
+Reminders.app se pilote en AppleScript via `osascript` (ou
+`osa tell Reminders`). Les propriétés exposées sur un `reminder` : `name`,
+`body` (notes), `due date`, `allday due date`, `remind me date`, `priority` (0 =
+aucune, 1–4 = haute, 5 = moyenne, 6–9 = basse), `completed`, `completion date`,
+`flagged`, `creation date`, `modification date`, `id`.
+
+> Limite connue : AppleScript n'expose **ni les sous-tâches ni la récurrence**.
+> Un rappel récurrent apparaît comme une occurrence simple ; ne pas tenter de
+> gérer la répétition par script.
+
+#### Lire — toutes les listes et leur nombre de rappels ouverts
+
+```bash
+osascript <<'EOF'
+tell application "Reminders"
+  set out to ""
+  repeat with l in lists
+    set n to count of (reminders of l whose completed is false)
+    set out to out & (name of l) & " | " & n & linefeed
+  end repeat
+  return out
+end tell
+EOF
+```
+
+> Piège de syntaxe : le `whose` doit être **parenthésé** dans un
+> `count of (… whose …)`, sinon AppleScript lève
+> `-1700 / Impossible de convertir … en type Unicode text`.
+
+#### Lire — tous les rappels ouverts avec échéance ET note
+
+On émet une ligne par rappel, champs séparés par `||`. **Lecture en lot** : on
+récupère `name`, `due date` puis `body` de l'ensemble filtré en une requête
+chacun, au lieu d'accéder propriété par propriété rappel par rappel. La note
+(`body`) est lue ici parce que c'est la mémoire persistante de la tâche.
+
+```bash
+osascript <<'EOF'
+tell application "Reminders"
+  set out to ""
+  repeat with l in lists
+    set lname to name of l
+    set ns to name of (reminders of l whose completed is false)
+    set ds to due date of (reminders of l whose completed is false)
+    set bs to body of (reminders of l whose completed is false)
+    repeat with i from 1 to count of ns
+      set dd to item i of ds
+      if dd is missing value then
+        set dd to "(sans échéance)"
+      else
+        set dd to dd as string
+      end if
+      set bb to item i of bs
+      if bb is missing value then set bb to ""
+      set out to out & lname & " || " & (item i of ns) & " || " & dd & " || " & bb & linefeed
+    end repeat
+  end repeat
+  return out
+end tell
+EOF
+```
+
+> **Perf — c'est lent (~1-2 min), c'est normal.** Reminders.app fait un
+> aller-retour Apple event coûteux par accès de propriété, et le filtre `whose`
+> est évalué côté app. La lecture en lot ci-dessus (trois requêtes par liste)
+> est la plus rapide _fiable_. **Ne pas** « tout lire d'un coup sans `whose` » :
+> ça ramène tout l'historique des rappels complétés (encore plus lent).
+>
+> **Piège à éviter** : un `whose completed is false and due date ≤ <date>` pour
+> filtrer les échéances côté serveur **renvoie zéro résultat** dès qu'un rappel
+> a une `due date` à `missing value`. Toujours filtrer les dates **dans la
+> boucle**, jamais dans le `whose`.
+
+#### Modifier — compléter la note (mémoire persistante)
+
+C'est l'écriture la plus fréquente : à chaque cycle, on **append** à la note
+l'avancement daté (ce qui a été fait / trouvé / ce qui bloque), sans écraser
+l'existant. Si le `body` est `missing value`, on part d'une chaîne vide.
+
+```bash
+osascript <<'EOF'
+tell application "Reminders"
+  set r to (first reminder of list "Famille" whose name is "Appeler le plombier")
+  set old to body of r
+  if old is missing value then set old to ""
+  if old is not "" then set old to old & linefeed
+  set body of r to old & "[2026-06-25] Devis demandé, en attente de réponse. Numéro : 06 12 34 56 78"
+end tell
+EOF
+```
+
+#### Modifier — cocher un rappel comme fait (tâche terminée)
+
+```bash
+osascript <<'EOF'
+tell application "Reminders"
+  set completed of (first reminder of list "Travail" whose name is "Préparer la revue") to true
+end tell
+EOF
+```
+
+#### Modifier — reprogrammer l'échéance (tâche reportée)
+
+```bash
+osascript <<'EOF'
+tell application "Reminders"
+  set due date of (first reminder of list "Famille" whose name is "Appeler le plombier") to (current date) + 1 * days
+end tell
+EOF
+```
+
+#### Ajouter — créer un nouveau rappel (sous-tâche issue de l'action)
+
+```bash
+osascript <<'EOF'
+tell application "Reminders"
+  tell list "Rappels"
+    make new reminder with properties {name:"Relancer le plombier", body:"si pas de réponse au devis", due date:(current date) + 2 * days, priority:1}
+  end tell
+end tell
+EOF
+```
+
+#### Fail-loud
+
+Si un appel `osascript` échoue (app Rappels non lancée, permission
+d'automatisation refusée, liste introuvable, conversion ratée), **arrête-toi,
+n'invente rien, et signale l'erreur brute** (la commande et le message
+d'erreur). Ne jamais combler un trou par une supposition sur le contenu d'un
+rappel.
+
+> Si l'erreur est `-1743` / _"n'est pas autorisé à envoyer des événements
+> Apple"_, c'est la permission d'automatisation : demander à l'utilisateur de
+> l'accorder dans Réglages Système → Confidentialité & sécurité →
+> Automatisation, puis s'arrêter.
+
+Ne jamais `delete` un rappel : c'est la donnée de l'utilisateur ; cocher ou
+reprogrammer.
