@@ -1,7 +1,7 @@
 ---
-name: macos-osascript
+name: macos-osascript-cli
 description:
-  "Drive macOS scriptable apps from the terminal via the bundled `bin/osa`
+  "Drive macOS scriptable apps from the terminal via the `osa`
   command (AppleScript / JavaScript-for-Automation over `osascript`). `osa apps`
   lists scriptable apps, `osa dict <App>` dumps an app's vocabulary, `osa run
   '<script>'` / `osa tell <App> '<body>'` execute it. Use whenever the user
@@ -26,29 +26,41 @@ disk, after which `textutil`/`sips` convert it for reading.
 
 ## How to invoke
 
-Run the bundled launcher **`bin/osa`** (PEP 723 — `uv` resolves deps inline on
-first run, no install step). Resolve `bin/osa` against this skill's directory;
-from elsewhere use the absolute path.
+`osa` is on `$PATH` once `uv run ~/Documents/claudine/scripts/link_clis.py`
+has linked `<skill-dir>/bin/osa` into `~/.local/bin`. Without the link, run
+`<skill-dir>/bin/osa` (`~/.claude/skills/macos-osascript-cli/bin/osa`). It is
+a PEP 723 script: `uv` resolves its dependencies on first run, no install step.
 
-## When to use
+## Authentication
 
-Trigger this skill when the user mentions a local Mac app or wants to:
+None. macOS asks once per target app for the Automation permission (see
+Gotchas).
 
-- read/search Mail or **save a mail attachment** to disk
-- read or create **Calendar** events / **Reminders** / **Notes**
-- look up **Contacts**
-- read or send **Messages** (iMessage/SMS)
-- get the active **Safari / Chrome / Arc** tab's URL or content, or run JS in it
-- read/write **Pages / Numbers / Keynote** documents
-- operate **Finder** (selection, paths, metadata)
-- drive a **non-scriptable** app's UI via **System Events** (GUI scripting)
+## Output conventions
 
-Do **not** use it for Electron apps with no dictionary (Slack, WhatsApp,
-Discord, Telegram, Signal, Notion, Linear, VS Code, Cursor, Zoom) — they expose
-nothing to AppleScript. Use their own CLIs/MCP connectors instead, or, as a last
-resort, GUI-script them through `System Events`.
+- stdout carries only the script's result (`osascript`'s own output, newline
+  trimmed); `osa apps --json` emits a JSON array of app names.
+- `osa dict` prints a compact per-suite summary; `--raw` prints the app's full
+  `.sdef` XML.
+- A failing script's `osascript` error goes to stderr and `osa` exits with its
+  exit code; CLI diagnostics go to stderr through `logging`.
 
 ## Commands
+
+Read: `apps`, `dict`, and `run`/`tell` with read-only scripts. Write: `run`/`tell`
+with a destructive verb need `--write` (see Gotchas).
+
+```bash
+# Read
+osa apps                                   # scriptable apps on this Mac
+osa apps --all --json                      # include CoreServices agents, as JSON
+osa dict Calendar                          # an app's commands and classes
+osa run 'tell app "Finder" to get name of every disk'
+osa run --js 'Application("Finder").selection().map(f => f.name())'
+osa tell Mail 'get subject of every message of inbox'
+# Write (refused without --write when the script deletes or shells out)
+osa tell Finder --write 'delete (every item of folder "Old" of desktop)'
+```
 
 ### `osa apps [--all] [--json]`
 
@@ -62,8 +74,8 @@ Print an app's scripting vocabulary — a per-suite list of commands and classes
 `--raw` emits the full `.sdef` XML. `<App>` is fuzzy (`chrome`, `mail`).
 
 ```bash
-bin/osa dict Calendar          # commands + classes, summarized
-bin/osa dict "Google Chrome" --raw | less
+osa dict Calendar          # commands + classes, summarized
+osa dict "Google Chrome" --raw | less
 ```
 
 ### `osa run '<script>' [-f FILE] [--js] [--write]`
@@ -72,9 +84,9 @@ Run an AppleScript (default) or JavaScript-for-Automation (`--js`). Script comes
 from the argument, `-f FILE`, or stdin.
 
 ```bash
-bin/osa run 'tell app "Calendar" to get name of every calendar'
-bin/osa run --js 'Application("Finder").selection().map(f => f.name())'
-bin/osa run -f /tmp/script.applescript
+osa run 'tell app "Calendar" to get name of every calendar'
+osa run --js 'Application("Finder").selection().map(f => f.name())'
+osa run -f /tmp/script.applescript
 ```
 
 ### `osa tell <App> '<body>' [-f FILE] [--write]`
@@ -82,19 +94,12 @@ bin/osa run -f /tmp/script.applescript
 Convenience: wraps BODY in `tell application "<App>" … end tell`.
 
 ```bash
-bin/osa tell Mail 'get subject of every message of inbox'
+osa tell Mail 'get subject of every message of inbox'
 ```
 
-## Safety
+## Recipes
 
-Read-only by default. Scripts containing **irreversible or shell-escaping**
-verbs (`delete`, `empty`, `erase`, `to trash`, `do shell script`, `eject`,
-`restart computer`, `shut down`) are **refused unless `--write` is passed**.
-This is a coarse rail, not a sandbox: outbound actions (sending mail/messages,
-posting) are not blocked by the CLI and must still be confirmed with the user
-before running, per normal agent safety rules.
-
-## Per-app cheat-sheet
+### Per-app cheat-sheet
 
 Fetch the full vocabulary with `osa dict <App>`. Quick orientation for the apps
 worth reaching for:
@@ -117,11 +122,11 @@ worth reaching for:
 | **iTerm / Terminal**          | open sessions, run commands, read output                                     | `osa dict iTerm`                                                             |
 | **Image Events**              | resize/convert images, read dimensions (faceless)                            | `osa dict "Image Events"`                                                    |
 
-## Worked example: read a Mail attachment the Gmail connector can't download
+### Worked example: read a Mail attachment the Gmail connector can't download
 
 ```bash
 # 1. Locate the message and save its attachment to disk.
-bin/osa tell Mail '
+osa tell Mail '
   set out to "/tmp/att.doc"
   set msgs to (messages of inbox whose subject contains "AGREEMENT")
   save (first mail attachment of (item 1 of msgs)) in (out as POSIX file)
@@ -130,18 +135,6 @@ bin/osa tell Mail '
 textutil -convert txt /tmp/att.doc -output /tmp/att.txt   # .doc/.docx → text
 # sips / Read tool handle PDFs and images directly.
 ```
-
-## Notes
-
-- **Permissions (TCC).** The first time `osa` drives a given app, macOS prompts
-  to allow Automation (System Settings → Privacy & Security → Automation). Some
-  apps additionally need Full Disk Access to reach their data. Reading an app's
-  objects via Apple Events does **not** require disk access to its container.
-- **JXA vs AppleScript.** `--js` is more convenient for JSON-shaped data;
-  AppleScript reads more naturally for app verbs. Both hit the same Apple
-  Events.
-- **Fuzzy app names** work for `dict`/`tell` via Launch Services; quote names
-  with spaces (`"Google Chrome"`).
 
 ### Reminders.app en AppleScript : recettes et pièges
 
@@ -283,3 +276,40 @@ rappel.
 
 Ne jamais `delete` un rappel : c'est la donnée de l'utilisateur ; cocher ou
 reprogrammer.
+
+## Gotchas
+
+**Safety.** Read-only by default. Scripts containing **irreversible or shell-escaping**
+verbs (`delete`, `empty`, `erase`, `to trash`, `do shell script`, `eject`,
+`restart computer`, `shut down`) are **refused unless `--write` is passed**.
+This is a coarse rail, not a sandbox: outbound actions (sending mail/messages,
+posting) are not blocked by the CLI and must still be confirmed with the user
+before running, per normal agent safety rules.
+
+- **Permissions (TCC).** The first time `osa` drives a given app, macOS prompts
+  to allow Automation (System Settings → Privacy & Security → Automation). Some
+  apps additionally need Full Disk Access to reach their data. Reading an app's
+  objects via Apple Events does **not** require disk access to its container.
+- **JXA vs AppleScript.** `--js` is more convenient for JSON-shaped data;
+  AppleScript reads more naturally for app verbs. Both hit the same Apple
+  Events.
+- **Fuzzy app names** work for `dict`/`tell` via Launch Services; quote names
+  with spaces (`"Google Chrome"`).
+
+## When to use
+
+Trigger this skill when the user mentions a local Mac app or wants to:
+
+- read/search Mail or **save a mail attachment** to disk
+- read or create **Calendar** events / **Reminders** / **Notes**
+- look up **Contacts**
+- read or send **Messages** (iMessage/SMS)
+- get the active **Safari / Chrome / Arc** tab's URL or content, or run JS in it
+- read/write **Pages / Numbers / Keynote** documents
+- operate **Finder** (selection, paths, metadata)
+- drive a **non-scriptable** app's UI via **System Events** (GUI scripting)
+
+Do **not** use it for Electron apps with no dictionary (Slack, WhatsApp,
+Discord, Telegram, Signal, Notion, Linear, VS Code, Cursor, Zoom) — they expose
+nothing to AppleScript. Use their own CLIs/MCP connectors instead, or, as a last
+resort, GUI-script them through `System Events`.
