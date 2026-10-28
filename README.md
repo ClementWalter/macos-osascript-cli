@@ -2,6 +2,8 @@
 
 **Visibility: public.**
 
+**Extension: not shipped** as a Claude Desktop extension: running arbitrary AppleScript is too broad a permission for a shared extension.
+
 Drive any scriptable macOS app (Mail, Calendar, Reminders, Notes, Finder,
 Safari, Chrome, Numbers, System Events, ...) from the terminal through
 AppleScript or JavaScript-for-Automation. Ships one command, `osa`, a thin
